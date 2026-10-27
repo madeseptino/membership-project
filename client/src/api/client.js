@@ -9,10 +9,11 @@ export async function apiRequest(path, options = {}) {
 
   const data = await response.json().catch(() => null)
 
-  if (!response.ok) {
-    const message = [502, 503, 504].includes(response.status)
+    if (!response.ok) {
+    const fallbackMessage = [502, 503, 504].includes(response.status)
       ? 'Server sedang tidak dapat dihubungi. Silakan coba beberapa saat lagi.'
-      : (data?.message ?? 'Terjadi kesalahan. Silakan coba lagi.')
+      : 'Terjadi kesalahan. Silakan coba lagi.'
+    const message = data?.message ?? fallbackMessage
 
     const error = new Error(message)
     error.status = response.status

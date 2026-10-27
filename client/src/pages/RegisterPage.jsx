@@ -6,6 +6,8 @@ import Input from '../components/Input.jsx'
 import PlanCard from '../components/PlanCard.jsx'
 import { formatRupiah } from '../utils/format.js'
 import { validateRegistration } from '../utils/validation.js'
+import { useNavigate } from 'react-router'
+import { useSnap } from '../hooks/useSnap.js'
 
 const initialForm = { name: '', email: '', phone: '' }
 
@@ -18,6 +20,9 @@ function RegisterPage() {
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
+
+  const navigate = useNavigate()
+  const { isReady: isSnapReady, error: snapError, pay } = useSnap()
 
   useEffect(() => {
     let ignore = false
@@ -61,9 +66,15 @@ function RegisterPage() {
 
     setIsSubmitting(true)
     try {
-      const { orderId } = await registerMember({ planId: selectedPlanId, ...form })
-      // Sementara: tampilkan order ID. Di langkah 5C diganti dengan popup pembayaran Midtrans
-      alert(`Pendaftaran tersimpan. Order ID: ${orderId}`)
+      const { orderId, snapToken } = await registerMember({ planId: selectedPlanId, ...form })
+
+      pay(snapToken, {
+        onSuccess: () => navigate(`/status/${orderId}`),
+        onPending: () => navigate(`/status/${orderId}`),
+        onError: () => setSubmitError('Pembayaran gagal diproses. Silakan coba lagi.'),
+        onClose: () =>
+          setSubmitError('Pembayaran belum diselesaikan. Klik "Lanjut ke pembayaran" untuk mencoba lagi.'),
+      })
     } catch (err) {
       if (err.errors) setErrors(err.errors)
       setSubmitError(err.message)
@@ -147,11 +158,17 @@ function RegisterPage() {
             'Belum ada paket yang dipilih.'
           )}
         </p>
-        {submitError && (
-          <p className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</p>
+        {(submitError || snapError) && (
+          <p className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+            {submitError || snapError}
+          </p>
         )}
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Memproses...' : 'Lanjut ke pembayaran'}
+        <Button type="submit" disabled={isSubmitting || !isSnapReady}>
+          {isSubmitting
+            ? 'Memproses...'
+            : isSnapReady
+              ? 'Lanjut ke pembayaran'
+              : 'Menyiapkan pembayaran...'}
         </Button>
       </div>
     </form>

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { query, withTransaction } from '../db.js'
 import { generateOrderId } from '../utils/orderId.js'
 import { validateRegistration } from '../utils/validation.js'
+import { cancelTransaction, createSnapTransaction } from '../midtrans.js'
 
 const PAYMENT_WINDOW_MINUTES = 60
 const router = Router()
@@ -48,9 +49,10 @@ router.post('/', async (req, res) => {
     )
 
     // Batalkan transaksi pending lama (pembatalan di Midtrans ditambahkan di langkah 5B)
-    await client.query(
+    const cancelledResult = await client.query(
       `UPDATE transactions SET status = 'cancelled', updated_at = now()
-       WHERE member_id = $1 AND status = 'pending'`,
+       WHERE member_id = $1 AND status = 'pending'
+       RETURNING order_id`,
       [member.id],
     )
 
@@ -61,7 +63,11 @@ router.post('/', async (req, res) => {
       [orderId, member.id, plan.id, plan.price, PAYMENT_WINDOW_MINUTES],
     )
 
-    return { rejected: false, orderId }
+    return { 
+      rejected: false, 
+      orderId,
+      cancelledOrderIds: cancelledResult.rows.map(row => row.order_id) 
+    }
   })
 
   if (result.rejected) {
@@ -72,7 +78,38 @@ router.post('/', async (req, res) => {
     })
   }
 
-  res.status(201).json({ orderId: result.orderId })
+  // Batalkan transaksi lama di Midtrans. Kalau gagal, tetap lanjut
+  // (misalnya transaksi itu memang belum pernah dibuka di Midtrans)
+  await Promise.allSettled(result.cancelledOrderIds.map((id) => cancelTransaction(id)))
+
+  let snap
+  try {
+    snap = await createSnapTransaction({
+      orderId: result.orderId,
+      amount: plan.price,
+      plan,
+      customer: data,
+      expiryMinutes: PAYMENT_WINDOW_MINUTES,
+    })
+  } catch (err) {
+    console.error(err)
+    await query(
+      `UPDATE transactions SET status = 'failed', updated_at = now() WHERE order_id = $1`,
+      [result.orderId],
+    )
+    return res.status(502).json({ message: 'Gagal membuat pembayaran di Midtrans. Silakan coba lagi.' })
+  }
+
+  await query(
+    'UPDATE transactions SET snap_token = $1, updated_at = now() WHERE order_id = $2',
+    [snap.token, result.orderId],
+  )
+
+  res.status(201).json({
+    orderId: result.orderId,
+    snapToken: snap.token,
+    redirectUrl: snap.redirectUrl,
+  })
 })
 
 export default router
