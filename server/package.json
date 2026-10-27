@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node --env-file=.env src/index.js",
-    "dev": "node --env-file=.env --watch src/index.js"
+    "dev": "node --env-file=.env --watch-path=./src src/index.js"
   },
   "dependencies": {
     "express": "^5.3.0",

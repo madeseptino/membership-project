@@ -63,3 +63,13 @@ export async function cancelTransaction(orderId) {
   console.log(`Midtrans cancel ${orderId}: ${data?.status_code} ${data?.status_message}`)
   return data
 }
+
+export async function getTransactionStatus(orderId) {
+  const response = await fetch(`${CORE_API_BASE_URL}/v2/${encodeURIComponent(orderId)}/status`, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: authHeader(),
+    },
+  })
+  return response.json().catch(() => null)
+}

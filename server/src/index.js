@@ -2,11 +2,13 @@ import express from 'express'
 import { query } from './db.js'
 import plansRouter from './routes/plans.js'
 import registerRouter from './routes/register.js'
+import statusRouter from './routes/status.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3000
 
 app.use(express.json())
+app.use('/api/status', statusRouter)
 app.use('/api/register', registerRouter)
 
 app.get('/api/health', async (req, res) => {
